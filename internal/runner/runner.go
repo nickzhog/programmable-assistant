@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -53,9 +54,9 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 	r.mu.Unlock()
 
 	args := []string{
-		"--provider", opts.Alias.Provider,
-		"--model", opts.Alias.Model,
-		"--" + opts.Mode, opts.Prompt,
+		"run",
+		"--model", opts.Alias.Provider + "/" + opts.Alias.Model,
+		opts.Prompt,
 	}
 
 	cmd := exec.CommandContext(ctx, "opencode", args...)
@@ -75,8 +76,19 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 
 	if err := cmd.Start(); err != nil {
 		cancel()
+		slog.Error("command start failed",
+			"session", sessionID,
+			"args", args,
+			"error", err,
+		)
 		return nil, fmt.Errorf("start command: %w", err)
 	}
+
+	slog.Info("command started",
+		"session", sessionID,
+		"workdir", opts.WorkDir,
+		"args", args,
+	)
 
 	rs := &runState{cancel: cancel, cmd: cmd}
 	r.mu.Lock()
@@ -100,8 +112,16 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 
 		if err := cmd.Wait(); err != nil {
 			if ctx.Err() == nil {
+				slog.Error("command exited with error",
+					"session", sessionID,
+					"error", err,
+				)
 				ch <- OutputChunk{Err: fmt.Errorf("command: %v", err)}
+			} else {
+				slog.Info("command cancelled", "session", sessionID)
 			}
+		} else {
+			slog.Info("command completed", "session", sessionID)
 		}
 	}()
 

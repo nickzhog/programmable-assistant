@@ -10,6 +10,7 @@ import (
 type Alias struct {
 	Provider string `toml:"provider"`
 	Model    string `toml:"model"`
+	Thinking string `toml:"thinking"`
 }
 
 type OpenCodeDefaults struct {

@@ -55,4 +55,15 @@ func (h *Handler) Register() {
 	h.bot.Handle(tele.OnPhoto, h.HandlePhoto)
 
 	h.bot.Handle(tele.OnCallback, h.HandleCallback)
+
+	h.bot.SetCommands([]tele.Command{
+		{Text: "start", Description: "Summary and main menu"},
+		{Text: "files", Description: "Browse file system"},
+		{Text: "cd", Description: "Change navigator directory"},
+		{Text: "sessions", Description: "List sessions"},
+		{Text: "new_session", Description: "Create new session"},
+		{Text: "provider", Description: "Configure AI provider"},
+		{Text: "plan", Description: "Run plan mode"},
+		{Text: "build", Description: "Run build mode"},
+	})
 }

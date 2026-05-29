@@ -93,8 +93,11 @@ func (h *Handler) handleBuildFromPlan(c tele.Context, data string) error {
 		Prompt:   planText,
 	}
 
-	prefix := fmt.Sprintf("[Mode: Build | Provider: %s | Model: %s]\n",
-		alias.Provider, alias.Model)
+	prefix := fmt.Sprintf("[Mode: Build | Provider: %s | Model: %s", alias.Provider, alias.Model)
+	if alias.Thinking != "" {
+		prefix += fmt.Sprintf(" | Thinking: %s", alias.Thinking)
+	}
+	prefix += "]\n"
 
 	msg, msgErr := h.bot.Send(c.Recipient(), prefix+"Starting...", &tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{
@@ -107,8 +110,7 @@ func (h *Handler) handleBuildFromPlan(c tele.Context, data string) error {
 		return nil
 	}
 
-	runCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	runCtx := context.Background()
 
 	ch, runErr := h.runner.Run(runCtx, sess.ID, opts)
 	if runErr != nil {
@@ -118,7 +120,7 @@ func (h *Handler) handleBuildFromPlan(c tele.Context, data string) error {
 		return nil
 	}
 
-	go h.streamOutput(runCtx, cancel, ch, msg, sess, prefix, "build")
+	go h.streamOutput(runCtx, ch, msg, sess, prefix, "build")
 
 	return nil
 }

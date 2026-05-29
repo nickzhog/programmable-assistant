@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -13,8 +14,7 @@ import (
 )
 
 const (
-	streamBatchInterval = 2 * time.Second
-	maxMessageLength    = 4096
+	maxMessageLength = 4096
 )
 
 func (h *Handler) HandlePlan(c tele.Context) error {
@@ -84,8 +84,12 @@ func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
 		modeLabel = "Build"
 	}
 
-	prefix := fmt.Sprintf("[Mode: %s | Provider: %s | Model: %s]\n",
+	prefix := fmt.Sprintf("[Mode: %s | Provider: %s | Model: %s",
 		modeLabel, alias.Provider, alias.Model)
+	if alias.Thinking != "" {
+		prefix += fmt.Sprintf(" | Thinking: %s", alias.Thinking)
+	}
+	prefix += "]\n"
 
 	msg, err := h.bot.Send(c.Recipient(), prefix+"Starting...", &tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{
@@ -98,56 +102,85 @@ func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
 		return c.Send(fmt.Sprintf("Error sending message: %v", err))
 	}
 
-	runCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	runCtx := context.Background()
 
 	ch, err := h.runner.Run(runCtx, sess.ID, opts)
 	if err != nil {
 		sess.Status = session.StatusIdle
 		h.store.SaveSession(context.Background(), sess)
+		slog.Error("runner failed to start", "session", sess.ID, "error", err)
 		h.bot.Edit(msg, prefix+fmt.Sprintf("Error: %v", err))
 		return nil
 	}
 
-	go h.streamOutput(runCtx, cancel, ch, msg, sess, prefix, mode)
+	go h.streamOutput(runCtx, ch, msg, sess, prefix, mode)
 
 	return nil
 }
 
-func (h *Handler) streamOutput(ctx context.Context, cancel context.CancelFunc, ch <-chan runner.OutputChunk,
+func (h *Handler) streamOutput(ctx context.Context, ch <-chan runner.OutputChunk,
 	msg *tele.Message, sess *session.Session, prefix string, mode string) {
 
 	var mu sync.Mutex
 	var buffer strings.Builder
+	hasOutput := false
+	hasError := false
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		needsEdit := false
+
 		for {
 			select {
 			case chunk, ok := <-ch:
 				if !ok {
+					if needsEdit {
+						mu.Lock()
+						content := prefix + buffer.String()
+						if len(content) > maxMessageLength {
+							content = truncateContent(content, maxMessageLength)
+						}
+						h.bot.Edit(msg, content, &tele.ReplyMarkup{
+							InlineKeyboard: [][]tele.InlineButton{
+								{{Text: "\U0001F6D1 Abort", Data: fmt.Sprintf("abort:%s", sess.ID)}},
+							},
+						})
+						mu.Unlock()
+					}
 					return
 				}
 				mu.Lock()
 				if chunk.Err != nil {
+					hasError = true
 					buffer.WriteString(fmt.Sprintf("\n[Error: %v]", chunk.Err))
 				} else if chunk.Text != "" {
+					hasOutput = true
 					buffer.WriteString(chunk.Text + "\n")
 				}
-
-				content := prefix + buffer.String()
-				if len(content) > maxMessageLength {
-					content = truncateContent(content, maxMessageLength)
-				}
-
-				h.bot.Edit(msg, content, &tele.ReplyMarkup{
-					InlineKeyboard: [][]tele.InlineButton{
-						{{Text: "\U0001F6D1 Abort", Data: fmt.Sprintf("abort:%s", sess.ID)}},
-					},
-				})
+				needsEdit = true
 				mu.Unlock()
+
+			case <-ticker.C:
+				mu.Lock()
+				if needsEdit {
+					content := prefix + buffer.String()
+					if len(content) > maxMessageLength {
+						content = truncateContent(content, maxMessageLength)
+					}
+					h.bot.Edit(msg, content, &tele.ReplyMarkup{
+						InlineKeyboard: [][]tele.InlineButton{
+							{{Text: "\U0001F6D1 Abort", Data: fmt.Sprintf("abort:%s", sess.ID)}},
+						},
+					})
+					needsEdit = false
+				}
+				mu.Unlock()
+
 			case <-ctx.Done():
+				hasError = true
 				return
 			}
 		}
@@ -166,14 +199,21 @@ func (h *Handler) streamOutput(ctx context.Context, cancel context.CancelFunc, c
 		finalContent = truncateContent(finalContent, maxMessageLength-200)
 	}
 
-	finalMessage := finalContent + fmt.Sprintf("\n\n\u2705 %s complete.", mode)
-
+	var finalMessage string
 	var buttons [][]tele.InlineButton
-	if mode == "plan" {
-		buttons = append(buttons, []tele.InlineButton{{
-			Text: "\u26A1 Create Build session from plan",
-			Data: fmt.Sprintf("build_from_plan:%s:%d", sess.ID, msg.ID),
-		}})
+
+	if hasError {
+		finalMessage = finalContent + fmt.Sprintf("\n\n\u274C %s failed.", mode)
+	} else if hasOutput {
+		finalMessage = finalContent + fmt.Sprintf("\n\n\u2705 %s complete.", mode)
+		if mode == "plan" {
+			buttons = append(buttons, []tele.InlineButton{{
+				Text: "\u26A1 Create Build session from plan",
+				Data: fmt.Sprintf("build_from_plan:%s:%d", sess.ID, msg.ID),
+			}})
+		}
+	} else {
+		finalMessage = prefix + fmt.Sprintf("\u274C %s produced no output.", mode)
 	}
 
 	h.bot.Edit(msg, finalMessage, &tele.ReplyMarkup{InlineKeyboard: buttons})

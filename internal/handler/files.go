@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nickzhog/programmable-assistant/internal/navigator"
+	"github.com/google/uuid"
 	tele "gopkg.in/telebot.v3"
 )
 
@@ -64,6 +65,17 @@ func (h *Handler) HandleCallback(c tele.Context) error {
 	}
 
 	switch {
+	case strings.HasPrefix(data, "cmd:files"):
+		c.Respond()
+		return h.HandleFiles(c)
+	case strings.HasPrefix(data, "cmd:sessions"):
+		c.Respond()
+		return h.HandleSessions(c)
+	case strings.HasPrefix(data, "cmd:provider"):
+		c.Respond()
+		return h.HandleProvider(c)
+	case strings.HasPrefix(data, "cmd:new_session"):
+		return c.Respond(&tele.CallbackResponse{Text: "Use /new_session <name>", ShowAlert: true})
 	case strings.HasPrefix(data, "nav:dir:"):
 		return h.handleNavDir(c, data, userID)
 	case strings.HasPrefix(data, "nav:up:"):
@@ -157,17 +169,17 @@ func (h *Handler) buildNavRow(pg *navigator.Page) []tele.InlineButton {
 }
 
 func (h *Handler) storePath(path string) string {
-	ref := fmt.Sprintf("p_%d", len(path)) // short compressed key
+	ref := uuid.New().String()[:8]
 	h.store.SetCallbackRef(context.Background(), ref, path)
 	return ref
 }
 
 func (h *Handler) resolvePath(c tele.Context, data string) (string, error) {
 	parts := strings.SplitN(data, ":", 3)
-	if len(parts) < 2 {
+	if len(parts) < 3 {
 		return "", fmt.Errorf("invalid callback data")
 	}
-	ref := parts[1]
+	ref := parts[2]
 	path, err := h.store.GetCallbackRef(context.Background(), ref)
 	if err != nil {
 		return "", err
