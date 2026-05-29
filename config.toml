@@ -1,0 +1,23 @@
+[app]
+allowed_users = [123456789, 987654321]
+default_opencode_dir = "/tmp/opencode_workspace"
+
+[opencode.defaults]
+plan = "smart"
+build = "fast"
+
+[opencode.aliases.fast]
+provider = "opencode-go"
+model = "deepseek-v4-pro"
+
+[opencode.aliases.smart]
+provider = "opencode-go"
+provider = "anthropic"
+model = "claude-3-5-sonnet"
+
+[opencode.aliases.direct-deepseek]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+[opencode.aliases.direct-deepseek-flash]
+provider = "deepseek"
+model = "deepseek-v4-flash"
