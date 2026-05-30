@@ -1,6 +1,6 @@
 # Telegram OpenCode Bot
 
-A Telegram bot that acts as a wrapper for the `opencode` CLI. This bot allows users to interactively run AI planning and building sessions against local codebases directly from Telegram.
+A Telegram bot that acts as a wrapper for the `opencode` CLI. This bot allows users to interactively run AI-driven tasks, automate system workflows, and execute commands on their computer directly from Telegram.
 
 ## Features
 
@@ -37,16 +37,17 @@ You can copy the `.env.example` file or create your configuration appropriately.
 
 ## Installation & Running
 
-There are no build scripts or Makefiles required. Simply run the bot using Go:
+1. Copy `.env.example` to `.env` and set your bot token:
+   ```bash
+   cp .env.example .env
+   # Edit .env and replace your_token_here with your actual token
+   ```
 
-```bash
-# Run with default settings (expects config.toml and bot.db in the current directory)
-export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-go run cmd/bot/main.go
-
-# Run with custom config and database paths
-go run cmd/bot/main.go -config /path/to/config.toml -db /path/to/bot.db
-```
+2. Run with defaults or custom paths:
+   ```bash
+   make run                                          # defaults (config.toml, bot.db)
+   go run ./cmd/bot/main.go -config /path/to/config.toml -db /path/to/bot.db
+   ```
 
 ## Usage
 
