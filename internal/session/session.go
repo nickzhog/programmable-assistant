@@ -10,13 +10,14 @@ const (
 )
 
 type Session struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	UserID           int64  `json:"user_id"`
-	WorkDir          string `json:"work_dir"`
-	ActivePlanAlias  string `json:"active_plan_alias"`
-	ActiveBuildAlias string `json:"active_build_alias"`
-	Status           Status `json:"status"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	UserID            int64  `json:"user_id"`
+	WorkDir           string `json:"work_dir"`
+	ActivePlanAlias   string `json:"active_plan_alias"`
+	ActiveBuildAlias  string `json:"active_build_alias"`
+	OpenCodeSessionID string `json:"open_code_session_id"`
+	Status            Status `json:"status"`
 }
 
 func New(userID int64, name, workDir string) *Session {

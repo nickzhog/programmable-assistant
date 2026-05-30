@@ -22,7 +22,7 @@ func (h *Handler) HandlePlan(c tele.Context) error {
 	if prompt == "" {
 		return c.Send("Usage: /plan <prompt>")
 	}
-	return h.runMode(c, "plan", prompt)
+	return h.runMode(c, "plan", prompt, false)
 }
 
 func (h *Handler) HandleBuild(c tele.Context) error {
@@ -30,10 +30,10 @@ func (h *Handler) HandleBuild(c tele.Context) error {
 	if prompt == "" {
 		return c.Send("Usage: /build <prompt>")
 	}
-	return h.runMode(c, "build", prompt)
+	return h.runMode(c, "build", prompt, false)
 }
 
-func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
+func (h *Handler) runMode(c tele.Context, mode string, prompt string, isFork bool) error {
 	userID := c.Sender().ID
 
 	activeID, err := h.store.GetActiveSessionID(context.Background(), userID)
@@ -72,11 +72,13 @@ func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
 	}
 
 	opts := runner.RunOptions{
-		WorkDir:  sess.WorkDir,
-		Alias:    alias,
-		AliasKey: aliasKey,
-		Mode:     mode,
-		Prompt:   prompt,
+		WorkDir:           sess.WorkDir,
+		Alias:             alias,
+		AliasKey:          aliasKey,
+		Mode:              mode,
+		Prompt:            prompt,
+		OpenCodeSessionID: sess.OpenCodeSessionID,
+		Fork:              isFork,
 	}
 
 	modeLabel := "Plan"
@@ -104,7 +106,7 @@ func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
 
 	runCtx := context.Background()
 
-	ch, err := h.runner.Run(runCtx, sess.ID, opts)
+	handle, err := h.runner.Run(runCtx, sess.ID, opts)
 	if err != nil {
 		sess.Status = session.StatusIdle
 		h.store.SaveSession(context.Background(), sess)
@@ -113,7 +115,19 @@ func (h *Handler) runMode(c tele.Context, mode string, prompt string) error {
 		return nil
 	}
 
-	go h.streamOutput(runCtx, ch, msg, sess, prefix, mode)
+	go func() {
+		ocSessID := <-handle.SessionID()
+		if ocSessID != "" {
+			sess.OpenCodeSessionID = ocSessID
+			h.store.SaveSession(context.Background(), sess)
+			slog.Info("opencode session id captured",
+				"bot_session", sess.ID,
+				"opencode_session", ocSessID,
+			)
+		}
+	}()
+
+	go h.streamOutput(runCtx, handle.Output(), msg, sess, prefix, mode)
 
 	return nil
 }
@@ -191,8 +205,14 @@ func (h *Handler) streamOutput(ctx context.Context, ch <-chan runner.OutputChunk
 	mu.Lock()
 	defer mu.Unlock()
 
-	sess.Status = session.StatusIdle
-	h.store.SaveSession(context.Background(), sess)
+	latest, storeErr := h.store.GetSession(context.Background(), sess.ID)
+	if storeErr == nil && latest != nil {
+		latest.Status = session.StatusIdle
+		h.store.SaveSession(context.Background(), latest)
+	} else {
+		sess.Status = session.StatusIdle
+		h.store.SaveSession(context.Background(), sess)
+	}
 
 	finalContent := prefix + buffer.String()
 	if len(finalContent) > maxMessageLength-200 {
@@ -208,8 +228,8 @@ func (h *Handler) streamOutput(ctx context.Context, ch <-chan runner.OutputChunk
 		finalMessage = finalContent + fmt.Sprintf("\n\n\u2705 %s complete.", mode)
 		if mode == "plan" {
 			buttons = append(buttons, []tele.InlineButton{{
-				Text: "\u26A1 Create Build session from plan",
-				Data: fmt.Sprintf("build_from_plan:%s:%d", sess.ID, msg.ID),
+				Text: "\u26A1 Build this plan",
+				Data: fmt.Sprintf("build_from_plan:%s", sess.ID),
 			}})
 		}
 	} else {
