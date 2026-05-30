@@ -8,12 +8,15 @@ Telegram bot that wraps the `opencode` CLI. Users interact via Telegram commands
 
 ```bash
 make run                          # loads .env automatically
-go run ./cmd/bot/main.go          # requires TELEGRAM_BOT_TOKEN in shell env
+make build                        # compiles binary to build/programmable-assistant
+./build/programmable-assistant    # runs compiled binary (requires TELEGRAM_BOT_TOKEN in shell env)
 ```
 
 Requires `TELEGRAM_BOT_TOKEN` env var.
 
-## Config (`config.toml`)
+## Config (`build/config.toml`)
+
+Copy `config.example.toml` to `build/config.toml` and customize.
 
 - `allowed_users` — Telegram user IDs whitelist (required, non-empty)
 - `default_opencode_dir` — default working directory for sessions

@@ -1,5 +1,5 @@
-allowed_users = [178405895]
-default_opencode_dir = "/Users/nick/tools/programmable-assistant"
+allowed_users = [YOUR_TELEGRAM_USER_ID]
+default_opencode_dir = "/path/to/your/workdir"
 
 [opencode.defaults]
 plan = "smart"

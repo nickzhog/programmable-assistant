@@ -26,14 +26,18 @@ A Telegram bot that acts as a wrapper for the `opencode` CLI. This bot allows us
 
 ## Configuration
 
-The bot uses a `config.toml` file for configuration. Here is an overview of the required settings:
+The bot uses a `build/config.toml` file for configuration. Copy the example and customize it:
+
+```bash
+cp config.example.toml build/config.toml
+```
+
+Required settings:
 
 - `allowed_users`: A required, non-empty list of whitelisted Telegram User IDs.
 - `default_opencode_dir`: The default working directory for new sessions.
 - `[opencode.aliases.<name>]`: Presets for providers, models, and thinking configurations used by the `/plan` and `/build` commands.
 - `[opencode.defaults]`: The default plan and build aliases to use when a new session is created.
-
-You can copy the `.env.example` file or create your configuration appropriately.
 
 ## Installation & Running
 
@@ -43,10 +47,22 @@ You can copy the `.env.example` file or create your configuration appropriately.
    # Edit .env and replace your_token_here with your actual token
    ```
 
-2. Run with defaults or custom paths:
+2. Copy and configure the config:
    ```bash
-   make run                                          # defaults (config.toml, bot.db)
-   go run ./cmd/bot/main.go -config /path/to/config.toml -db /path/to/bot.db
+   cp config.example.toml build/config.toml
+   # Edit build/config.toml with your settings
+   ```
+
+3. Build the binary:
+   ```bash
+   make build
+   ```
+
+4. Run:
+   ```bash
+   make run                                          # runs via go run (defaults: build/config.toml, bot.db)
+   ./build/programmable-assistant                    # runs compiled binary (defaults)
+   ./build/programmable-assistant -config /path/to/config.toml -db /path/to/bot.db
    ```
 
 ## Usage

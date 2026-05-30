@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.toml", "Path to config file")
+	configPath := flag.String("config", "build/config.toml", "Path to config file")
 	dbPath := flag.String("db", "bot.db", "Path to bbolt database file")
 	flag.Parse()
 

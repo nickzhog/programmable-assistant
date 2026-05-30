@@ -1,15 +1,18 @@
 # Environment
 .env
 
-# Config (contains allowed_users, API keys)
-config.toml
-
 # Database
 bot.db
+
+# Config (copy config.example.toml to build/config.toml)
+config.toml
+build/config.toml
 
 # Go build artifacts
 /programmable-assistant
 /programmable-assistant.exe
+build/programmable-assistant
+build/programmable-assistant.exe
 
 # macOS
 .DS_Store
