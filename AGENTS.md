@@ -7,11 +7,11 @@ Telegram bot that wraps the `opencode` CLI. Users interact via Telegram commands
 ## Commands
 
 ```bash
-go run cmd/bot/main.go                          # run with defaults
-go run cmd/bot/main.go -config path -db path    # custom config/db paths
+make run                          # loads .env automatically
+go run ./cmd/bot/main.go          # requires TELEGRAM_BOT_TOKEN in shell env
 ```
 
-Requires `TELEGRAM_BOT_TOKEN` env var. No Makefile, no build scripts.
+Requires `TELEGRAM_BOT_TOKEN` env var.
 
 ## Config (`config.toml`)
 
@@ -45,9 +45,11 @@ internal/config/         → TOML config loading + validation
 
 ## Runner
 
-- Spawns `opencode` CLI with `Setpgid` and kills entire process group on abort
+- Spawns `opencode run --format json` as subprocess (JSON mode required for session ID extraction)
+- Uses `Setpgid` and kills entire process group on abort
 - One concurrent run per session ID
 - Output streamed via Telegram message edits (max 4096 chars)
+- stdout parsed as JSON events (`{type, sessionID, part:{type,text}}`); stderr stripped of ANSI codes
 
 ## Storage
 
