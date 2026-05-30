@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,11 +16,13 @@ import (
 )
 
 type RunOptions struct {
-	WorkDir  string
-	Alias    config.Alias
-	AliasKey string
-	Mode     string
-	Prompt   string
+	WorkDir           string
+	Alias             config.Alias
+	AliasKey          string
+	Mode              string
+	Prompt            string
+	OpenCodeSessionID string
+	Fork              bool
 }
 
 type OutputChunk struct {
@@ -37,13 +40,35 @@ type Runner struct {
 	running map[string]*runState
 }
 
+type RunHandle struct {
+	ch        <-chan OutputChunk
+	sessionCh <-chan string
+}
+
+func (h *RunHandle) Output() <-chan OutputChunk {
+	return h.ch
+}
+
+func (h *RunHandle) SessionID() <-chan string {
+	return h.sessionCh
+}
+
 func New() *Runner {
 	return &Runner{
 		running: make(map[string]*runState),
 	}
 }
 
-func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-chan OutputChunk, error) {
+type opencodeEvent struct {
+	Type      string `json:"type"`
+	SessionID string `json:"sessionID"`
+	Part      struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"part"`
+}
+
+func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (*RunHandle, error) {
 	r.mu.Lock()
 	if _, exists := r.running[sessionID]; exists {
 		r.mu.Unlock()
@@ -55,9 +80,26 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 
 	args := []string{
 		"run",
-		"--model", opts.Alias.Provider + "/" + opts.Alias.Model,
-		opts.Prompt,
+		"--format", "json",
 	}
+
+	if opts.OpenCodeSessionID != "" {
+		args = append(args, "--session", opts.OpenCodeSessionID)
+	}
+	if opts.Fork {
+		args = append(args, "--fork")
+	}
+	if opts.Alias.Thinking != "" {
+		args = append(args, "--thinking")
+	}
+	if opts.Mode == "plan" {
+		args = append(args, "--agent", "plan")
+	}
+
+	args = append(args,
+		"--model", opts.Alias.Provider+"/"+opts.Alias.Model,
+		opts.Prompt,
+	)
 
 	cmd := exec.CommandContext(ctx, "opencode", args...)
 	cmd.Dir = opts.WorkDir
@@ -96,16 +138,19 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 	r.mu.Unlock()
 
 	ch := make(chan OutputChunk, 64)
+	sessionCh := make(chan string, 1)
+	handle := &RunHandle{ch: ch, sessionCh: sessionCh}
 
 	go func() {
 		defer close(ch)
+		defer close(sessionCh)
 		defer r.remove(sessionID)
 		defer cancel()
 
 		var wg sync.WaitGroup
 		wg.Add(2)
 
-		go scanPipe(stdout, ch, &wg)
+		go scanJSON(stdout, ch, sessionCh, &wg)
 		go scanPipe(stderr, ch, &wg)
 
 		wg.Wait()
@@ -125,7 +170,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (<-
 		}
 	}()
 
-	return ch, nil
+	return handle, nil
 }
 
 func (r *Runner) Abort(sessionID string) {
@@ -154,6 +199,35 @@ func (r *Runner) remove(sessionID string) {
 	r.mu.Lock()
 	delete(r.running, sessionID)
 	r.mu.Unlock()
+}
+
+func scanJSON(pipe io.Reader, ch chan<- OutputChunk, sessionCh chan<- string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	scanner := bufio.NewScanner(pipe)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var event opencodeEvent
+		if err := json.Unmarshal(line, &event); err != nil {
+			continue
+		}
+
+		if event.SessionID != "" && sessionCh != nil {
+			sessionCh <- event.SessionID
+			sessionCh = nil
+		}
+
+		if event.Part.Type == "text" && event.Part.Text != "" {
+			ch <- OutputChunk{Text: event.Part.Text}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		ch <- OutputChunk{Err: fmt.Errorf("scanner: %w", err)}
+	}
 }
 
 func scanPipe(pipe io.Reader, ch chan<- OutputChunk, wg *sync.WaitGroup) {
