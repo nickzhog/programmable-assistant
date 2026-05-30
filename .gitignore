@@ -1,0 +1,21 @@
+# Environment
+.env
+
+# Config (contains allowed_users, API keys)
+config.toml
+
+# Database
+bot.db
+
+# Go build artifacts
+/programmable-assistant
+/programmable-assistant.exe
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
