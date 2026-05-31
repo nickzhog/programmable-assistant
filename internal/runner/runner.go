@@ -26,8 +26,22 @@ type RunOptions struct {
 }
 
 type OutputChunk struct {
-	Text string
-	Err  error
+	Text       string
+	Err        error
+	ToolCall   *ToolCallInfo
+	ToolResult *ToolResultInfo
+}
+
+type ToolCallInfo struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Input string `json:"input"`
+}
+
+type ToolResultInfo struct {
+	ToolCallID string `json:"tool_call_id"`
+	Name       string `json:"name"`
+	Content    string `json:"content"`
 }
 
 type runState struct {
@@ -66,6 +80,20 @@ type opencodeEvent struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"part"`
+	ToolCall   *opencodeToolCall   `json:"tool_call,omitempty"`
+	ToolResult *opencodeToolResult `json:"tool_result,omitempty"`
+}
+
+type opencodeToolCall struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Input string `json:"input"`
+}
+
+type opencodeToolResult struct {
+	ToolCallID string `json:"tool_call_id"`
+	Name       string `json:"name"`
+	Content    string `json:"content"`
 }
 
 func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (*RunHandle, error) {
@@ -81,6 +109,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string, opts RunOptions) (*R
 	args := []string{
 		"run",
 		"--format", "json",
+		"--log-level", "DEBUG",
 	}
 
 	if opts.OpenCodeSessionID != "" {
@@ -223,6 +252,26 @@ func scanJSON(pipe io.Reader, ch chan<- OutputChunk, sessionCh chan<- string, wg
 
 		if event.Part.Type == "text" && event.Part.Text != "" {
 			ch <- OutputChunk{Text: event.Part.Text}
+		}
+
+		if event.ToolCall != nil {
+			ch <- OutputChunk{
+				ToolCall: &ToolCallInfo{
+					ID:    event.ToolCall.ID,
+					Name:  event.ToolCall.Name,
+					Input: event.ToolCall.Input,
+				},
+			}
+		}
+
+		if event.ToolResult != nil {
+			ch <- OutputChunk{
+				ToolResult: &ToolResultInfo{
+					ToolCallID: event.ToolResult.ToolCallID,
+					Name:       event.ToolResult.Name,
+					Content:    event.ToolResult.Content,
+				},
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {

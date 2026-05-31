@@ -170,6 +170,16 @@ func (h *Handler) streamOutput(ctx context.Context, ch <-chan runner.OutputChunk
 				if chunk.Err != nil {
 					hasError = true
 					buffer.WriteString(fmt.Sprintf("\n[Error: %v]", chunk.Err))
+				} else if chunk.ToolCall != nil {
+					hasOutput = true
+					buffer.WriteString(fmt.Sprintf("\n[Tool: %s] %s\n", chunk.ToolCall.Name, chunk.ToolCall.Input))
+				} else if chunk.ToolResult != nil {
+					hasOutput = true
+					resultContent := chunk.ToolResult.Content
+					if len(resultContent) > 200 {
+						resultContent = resultContent[:200] + "..."
+					}
+					buffer.WriteString(fmt.Sprintf("  -> %s: %s\n", chunk.ToolResult.Name, resultContent))
 				} else if chunk.Text != "" {
 					hasOutput = true
 					buffer.WriteString(chunk.Text + "\n")
